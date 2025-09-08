@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { authAPI } from '../utils/api';
+import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
 
@@ -41,6 +42,11 @@ const authReducer = (state, action) => {
         isAuthenticated: false,
         loading: false,
       };
+    case 'UPDATE_USER':
+      return {
+        ...state,
+        user: { ...state.user, ...action.payload },
+      };
     default:
       return state;
   }
@@ -50,20 +56,35 @@ export const AuthProvider = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
-    
-    if (token && user) {
-      dispatch({
-        type: 'LOGIN_SUCCESS',
-        payload: {
-          token,
-          user: JSON.parse(user),
-        },
-      });
-    } else {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
+    const initializeAuth = async () => {
+      const token = localStorage.getItem('token');
+      const user = localStorage.getItem('user');
+      
+      if (token && user) {
+        try {
+          // Verify token is still valid by fetching user profile
+          const response = await authAPI.getProfile();
+          dispatch({
+            type: 'LOGIN_SUCCESS',
+            payload: {
+              token,
+              user: response.data,
+            },
+          });
+          // Update stored user data if it's different
+          localStorage.setItem('user', JSON.stringify(response.data));
+        } catch (error) {
+          // Token is invalid, clear storage
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          dispatch({ type: 'AUTH_ERROR' });
+        }
+      } else {
+        dispatch({ type: 'SET_LOADING', payload: false });
+      }
+    };
+
+    initializeAuth();
   }, []);
 
   const login = async (credentials) => {
@@ -83,9 +104,10 @@ export const AuthProvider = ({ children }) => {
       return { success: true };
     } catch (error) {
       dispatch({ type: 'AUTH_ERROR' });
+      const errorMessage = error.response?.data?.message || 'Login failed. Please try again.';
       return {
         success: false,
-        error: error.response?.data?.message || 'Login failed',
+        error: errorMessage,
       };
     }
   };
@@ -107,9 +129,10 @@ export const AuthProvider = ({ children }) => {
       return { success: true };
     } catch (error) {
       dispatch({ type: 'AUTH_ERROR' });
+      const errorMessage = error.response?.data?.message || 'Registration failed. Please try again.';
       return {
         success: false,
-        error: error.response?.data?.message || 'Registration failed',
+        error: errorMessage,
       };
     }
   };
@@ -118,6 +141,13 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     dispatch({ type: 'LOGOUT' });
+    toast.success('Logged out successfully');
+  };
+
+  const updateUser = (userData) => {
+    dispatch({ type: 'UPDATE_USER', payload: userData });
+    const updatedUser = { ...state.user, ...userData };
+    localStorage.setItem('user', JSON.stringify(updatedUser));
   };
 
   const value = {
@@ -125,6 +155,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    updateUser,
   };
 
   return (
