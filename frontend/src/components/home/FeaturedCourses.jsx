@@ -1,40 +1,69 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import { Clock, Users, Star, ArrowRight } from 'lucide-react';
+import { Clock, Users, Star, ArrowRight, BookOpen } from 'lucide-react';
 import { coursesAPI } from '../../utils/api';
+import { useApi } from '../../hooks/useApi';
 import LoadingSpinner from '../common/LoadingSpinner';
 
 const FeaturedCourses = () => {
-  const [courses, setCourses] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchCourses = async () => {
-      try {
-        const response = await coursesAPI.getAllCourses();
-        // Get first 6 courses from all categories
-        const allCourses = response.data.flatMap(category => 
-          category.courses.map(course => ({
-            ...course,
-            category: category.category
-          }))
-        );
-        setCourses(allCourses.slice(0, 6));
-      } catch (error) {
-        console.error('Error fetching courses:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCourses();
-  }, []);
+  const { data: coursesData, loading, error } = useApi(() => coursesAPI.getAllCourses());
 
   if (loading) {
     return (
       <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <LoadingSpinner size="lg" className="py-20" />
+          <div className="text-center mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+              Featured Courses
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Discover our most popular courses designed to help you master in-demand skills 
+              and advance your career.
+            </p>
+          </div>
+          <LoadingSpinner size="lg" text="Loading courses..." className="py-20" />
+        </div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+              Featured Courses
+            </h2>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
+              <p className="text-red-600">Failed to load courses. Please try again later.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // Get first 6 courses from all categories
+  const allCourses = coursesData ? coursesData.flatMap(category => 
+    category.courses.map(course => ({
+      ...course,
+      category: category.category
+    }))
+  ) : [];
+  
+  const featuredCourses = allCourses.slice(0, 6);
+
+  if (featuredCourses.length === 0) {
+    return (
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+              Featured Courses
+            </h2>
+            <p className="text-gray-600">No courses available at the moment.</p>
+          </div>
         </div>
       </section>
     );
@@ -54,7 +83,7 @@ const FeaturedCourses = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
-          {courses.map((course) => (
+          {featuredCourses.map((course) => (
             <div
               key={course.courseCode}
               className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2"
@@ -66,14 +95,15 @@ const FeaturedCourses = () => {
                     src={course.image}
                     alt={course.courseName}
                     className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'flex';
+                    }}
                   />
-                ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <span className="text-white text-lg font-semibold">
-                      {course.courseName}
-                    </span>
-                  </div>
-                )}
+                ) : null}
+                <div className="flex items-center justify-center h-full" style={{ display: course.image ? 'none' : 'flex' }}>
+                  <BookOpen className="w-12 h-12 text-white mb-2" />
+                </div>
                 <div className="absolute top-4 left-4">
                   <span className="bg-yellow-400 text-gray-900 px-3 py-1 rounded-full text-sm font-medium">
                     {course.category}

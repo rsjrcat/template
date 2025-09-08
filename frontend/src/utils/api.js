@@ -1,13 +1,14 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'https://backend-bms-production.up.railway.app/api';
+const API_BASE_URL = import.meta.env.VITE_REACT_APP_API_BASE_URL || 'https://bms-2-te1h.onrender.com';
 
 // Create axios instance
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: `${API_BASE_URL}/api`,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 seconds timeout
 });
 
 // Add auth token to requests
@@ -19,20 +20,23 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle auth errors
+// Handle auth errors and network issues
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      // Only redirect if not already on login page
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
 );
 
-// API endpoints
+// API endpoints based on backend routes
 export const authAPI = {
   login: (credentials) => api.post('/admin/login', credentials),
   register: (userData) => api.post('/admin/register', userData),
@@ -59,6 +63,11 @@ export const testimonialsAPI = {
 
 export const contactAPI = {
   sendMessage: (messageData) => api.post('/contact', messageData),
+};
+
+// Health check endpoint
+export const healthAPI = {
+  check: () => api.get('/health'),
 };
 
 export default api;

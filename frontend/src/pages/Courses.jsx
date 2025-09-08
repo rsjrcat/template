@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Filter, Clock, Users, Star, Grid, List } from 'lucide-react';
+import { Search, Filter, Clock, Users, Star, Grid, List, BookOpen } from 'lucide-react';
 import { coursesAPI } from '../utils/api';
+import { useApi } from '../hooks/useApi';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Breadcrumb from '../components/common/Breadcrumb';
 
 const Courses = () => {
-  const [courses, setCourses] = useState([]);
-  const [filteredCourses, setFilteredCourses] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { data: coursesData, loading, error, refetch } = useApi(() => coursesAPI.getAllCourses());
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [sortBy, setSortBy] = useState('newest');
@@ -17,34 +15,20 @@ const Courses = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const coursesPerPage = 9;
 
-  useEffect(() => {
-    const fetchCourses = async () => {
-      try {
-        const response = await coursesAPI.getAllCourses();
-        const allCourses = response.data.flatMap(category => 
-          category.courses.map(course => ({
-            ...course,
-            category: category.category
-          }))
-        );
-        setCourses(allCourses);
-        setFilteredCourses(allCourses);
-        
-        // Extract unique categories
-        const uniqueCategories = [...new Set(response.data.map(cat => cat.category))];
-        setCategories(uniqueCategories);
-      } catch (error) {
-        console.error('Error fetching courses:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Process courses data
+  const { allCourses, categories, filteredCourses } = useMemo(() => {
+    if (!coursesData) return { allCourses: [], categories: [], filteredCourses: [] };
 
-    fetchCourses();
-  }, []);
+    const allCourses = coursesData.flatMap(category => 
+      category.courses.map(course => ({
+        ...course,
+        category: category.category
+      }))
+    );
 
-  useEffect(() => {
-    let filtered = courses;
+    const categories = [...new Set(coursesData.map(cat => cat.category))];
+
+    let filtered = allCourses;
 
     // Filter by search term
     if (searchTerm) {
@@ -63,7 +47,7 @@ const Courses = () => {
     // Sort courses
     switch (sortBy) {
       case 'newest':
-        filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         break;
       case 'popular':
         filtered.sort((a, b) => (b.students || 0) - (a.students || 0));
@@ -81,15 +65,19 @@ const Courses = () => {
         break;
     }
 
-    setFilteredCourses(filtered);
-    setCurrentPage(1);
-  }, [courses, searchTerm, selectedCategory, sortBy]);
+    return { allCourses, categories, filteredCourses: filtered };
+  }, [coursesData, searchTerm, selectedCategory, sortBy]);
 
   // Pagination
   const indexOfLastCourse = currentPage * coursesPerPage;
   const indexOfFirstCourse = indexOfLastCourse - coursesPerPage;
   const currentCourses = filteredCourses.slice(indexOfFirstCourse, indexOfLastCourse);
   const totalPages = Math.ceil(filteredCourses.length / coursesPerPage);
+
+  // Reset page when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedCategory, sortBy]);
 
   const breadcrumbItems = [
     { label: 'Courses' }
@@ -99,7 +87,34 @@ const Courses = () => {
     return (
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <LoadingSpinner size="lg" className="py-20" />
+          <div className="bg-white shadow-sm">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              <Breadcrumb items={breadcrumbItems} />
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">All Courses</h1>
+            </div>
+          </div>
+          <LoadingSpinner size="lg" text="Loading courses..." className="py-20" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="bg-white shadow-sm">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              <Breadcrumb items={breadcrumbItems} />
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">All Courses</h1>
+            </div>
+          </div>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 mt-8">
+            <p className="text-red-600 mb-4">Failed to load courses: {error}</p>
+            <button onClick={refetch} className="btn-primary">
+              Try Again
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -154,10 +169,10 @@ const Courses = () => {
                         : 'hover:bg-gray-100'
                     }`}
                   >
-                    All Categories ({courses.length})
+                    All Categories ({allCourses.length})
                   </button>
                   {categories.map((category) => {
-                    const count = courses.filter(course => course.category === category).length;
+                    const count = allCourses.filter(course => course.category === category).length;
                     return (
                       <button
                         key={category}
@@ -270,14 +285,15 @@ const Courses = () => {
                           src={course.image}
                           alt={course.courseName}
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'flex';
+                          }}
                         />
-                      ) : (
-                        <div className="flex items-center justify-center h-full">
-                          <span className="text-white text-lg font-semibold text-center px-4">
-                            {course.courseName}
-                          </span>
-                        </div>
-                      )}
+                      ) : null}
+                      <div className="flex items-center justify-center h-full" style={{ display: course.image ? 'none' : 'flex' }}>
+                        <BookOpen className="w-12 h-12 text-white" />
+                      </div>
                       <div className="absolute top-4 left-4">
                         <span className="bg-yellow-400 text-gray-900 px-3 py-1 rounded-full text-sm font-medium">
                           {course.category}
@@ -347,19 +363,32 @@ const Courses = () => {
                     Previous
                   </button>
                   
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`px-3 py-2 border rounded-lg ${
-                        currentPage === page
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
+                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    let page;
+                    if (totalPages <= 5) {
+                      page = i + 1;
+                    } else if (currentPage <= 3) {
+                      page = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      page = totalPages - 4 + i;
+                    } else {
+                      page = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-2 border rounded-lg ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    );
+                  })}
                   
                   <button
                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
